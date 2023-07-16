@@ -4,13 +4,15 @@ import Parser
 import Text.Parsec
 
 import qualified Data.ByteString as BS
-import Binding (resolveBindings)
-import CodeGen (genExpr, genAST)
+import Binding (resolveBindings, bindProgram)
+import CodeGen (genProgram)
 import PrintCode (Printable(printCode), printGenerated)
 import GenRep (runGenerator)
 import System.Environment (getArgs)
 import RegAlloc (regAllocNaive)
 import System.Exit (exitFailure)
+import Control.Monad (forM_)
+import Tree (printAST, Toplevel(Binding))
 
 data Settings = Settings {
     sourceFile :: String,
@@ -49,13 +51,13 @@ main = do
     settings <- readSettings
     exprSrc <- getSource settings
     -- TODO : whole program
-    case parse parseExpr "stdin" exprSrc of 
+    case parse parseProgram "stdin" exprSrc of 
         Left perr -> do 
             print perr
             exitFailure
         Right ast -> do 
-            let bound = resolveBindings ast 
-            let virtGenerated = runGenerator $ genAST bound 
+            let bound = bindProgram ast 
+            let virtGenerated = runGenerator $ genProgram bound 
             let allocatedRegisters = runGenerator $ regAllocNaive [] virtGenerated
             saveResult settings $ printGenerated allocatedRegisters
 

@@ -5,7 +5,7 @@ import Tree
 import Binding -- previous pass
 
 import Control.Monad 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust)
 
 type Environment = [(Binding, VirtualRegister)]
 
@@ -151,3 +151,23 @@ genAST expr = do
     emitCode $ OneImmediate "bl" $ Label "print_message"
     emitCode $ OneImmediate "bl" $ Label "print_newline"
     emitCode $ OneImmediate "bl" $ Label "exit"
+
+genProgram :: [Toplevel Resolved] -> Generator VirtualRegister ()
+genProgram program = do 
+        emitCode $ Pseudo ".global" $ Label "_start"
+        emitCode $ DefLabel "_start"
+        envt <- genProgramEnvironment [] program
+        let mainReg = fromJust $ lookup ("main", -1) envt 
+        emitCode $ TwoRegister "mov" abiArg mainReg 
+        emitCode $ OneImmediate "bl" $ Label "print_message"
+        emitCode $ OneImmediate "bl" $ Label "print_newline"
+        emitCode $ OneImmediate "bl" $ Label "exit"
+    where 
+        genProgramEnvironment envt [] = return envt
+        genProgramEnvironment envt (Binding _ (Bound name id) expr : rest) = do 
+            emitCode $ Comment $ "Generating global symbol " ++ name
+            bindingReg <- getVReg
+            let envt' = ((name, id), bindingReg) : envt 
+            exprReg <- genExpr envt' expr 
+            emitCode $ TwoRegister "mov" bindingReg exprReg
+            genProgramEnvironment envt' rest

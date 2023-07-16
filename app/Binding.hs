@@ -61,7 +61,7 @@ instance ShowablePass ResolvedLambda where
 resolveProgram :: [Binding] -> [Toplevel Parsed] -> Resolver [Toplevel Resolved]
 resolveProgram _ [] = return [] 
 resolveProgram bindings (Binding meta name value:defs) = do 
-    newId <- getId
+    newId <- if name == "main" then return $ -1 else getId
     let newBindings = (name, newId) : bindings
     newValue <- resolve newBindings value -- generate body with new bindings to allow recursion
     restResolved <- resolveProgram newBindings defs 

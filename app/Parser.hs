@@ -103,4 +103,4 @@ parseToplevel :: Parser (Toplevel Parsed)
 parseToplevel = parseBinding
 
 parseProgram :: Parser [Toplevel Parsed]
-parseProgram = many parseToplevel
+parseProgram = many $ spaces *> parseToplevel
