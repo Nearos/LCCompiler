@@ -12,7 +12,7 @@ import System.Environment (getArgs)
 import RegAlloc (regAllocNaive)
 import System.Exit (exitFailure)
 import Control.Monad (forM_)
-import Tree (printAST, Toplevel(Binding))
+import Tree (printAST, Toplevel(Binding), printProgram)
 
 data Settings = Settings {
     sourceFile :: String,

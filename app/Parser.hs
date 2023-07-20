@@ -10,12 +10,14 @@ import Text.Parsec.ByteString
 data Parsed
 
 type instance Sym Parsed = String
+type instance Const Parsed = String
 type instance AppMeta Parsed = SourcePos
 type instance VarMeta Parsed = SourcePos
 type instance LambdaMeta Parsed = SourcePos
 type instance LitMeta Parsed = SourcePos
 type instance ExternMeta Parsed = SourcePos
 type instance BindMeta Parsed = SourcePos
+type instance ConsMeta Parsed = SourcePos
 
 instance ShowablePass [Char] where
     passShow = id 
@@ -24,10 +26,16 @@ instance ShowablePass SourcePos where
     passShow = show
 
 parseSym :: Parser String 
-parseSym = (:) <$> letter <*> many alphaNum
+parseSym = (:) <$> lower <*> many alphaNum
+
+parseConstName :: Parser String
+parseConstName = (:) <$> upper <*> many alphaNum
 
 parseVar :: Parser (Expr Parsed)
 parseVar = Var <$> getPosition <*> parseSym
+
+parseConst :: Parser (Expr Parsed)
+parseConst = Var <$> getPosition <*> parseConstName
 
 parseLambda :: Parser (Expr Parsed)
 parseLambda = do 
@@ -69,7 +77,7 @@ parseIntLit = do
     value <- read <$> many1 alphaNum
     return $ SrcIntLit location value
 
-parseAtomic = parseBracketed <|> parseVar <|> parseExtern <|> parseStringLit
+parseAtomic = parseBracketed <|> parseVar <|> parseConst <|> parseExtern <|> parseStringLit 
 
 parseApp :: Parser (Expr Parsed)
 parseApp = do  
@@ -99,8 +107,19 @@ parseBinding = do
     string ";"
     return $ Binding location name value
 
+parseConstDef :: Parser (Toplevel Parsed)
+parseConstDef = do 
+    location <- getPosition
+    name <- parseConstName
+    spaces 
+    string ":"
+    spaces 
+    arity <- read <$> many digit 
+    return $ ConstDef location name arity
+
+
 parseToplevel :: Parser (Toplevel Parsed)
-parseToplevel = parseBinding
+parseToplevel = parseBinding <|> parseConstDef
 
 parseProgram :: Parser [Toplevel Parsed]
 parseProgram = many $ spaces *> parseToplevel
