@@ -1,7 +1,7 @@
 # Steps to continue the development of the compiler
 
-- Allow toplevel names to be bound
-    - bind the name to a virtual register before generating the body to allow recursion
+- ~~Allow toplevel names to be bound~~
+    - ~~bind the name to a virtual register before generating the body to allow recursion~~
 - Constants
     - constants are capitalized toplevel names not bound 
     - annotated with their valency
