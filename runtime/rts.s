@@ -3,6 +3,10 @@
 
 .text
 
+.global _main
+_main:
+    b _start
+
 .global shallow_string_copy
 shallow_string_copy:
     Function
@@ -61,7 +65,8 @@ print_message: // string* x1
     mov x7, x1
     mov x8, 64
     mov x0,  1
-    ldp x2, x1, [x7] //field with offset 0 is string length
+    ldr x2, [x7] //field with offset 0 is string length
+    ldr x1, [x7, 8]
     svc 0 
     Return
 
@@ -88,6 +93,8 @@ print_newline:
 .data 
 
 .global append_string_string_struct
+
+.align 3
 append_string_string_struct:
     .quad 0
     .quad 0

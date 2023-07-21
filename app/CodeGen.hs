@@ -119,10 +119,12 @@ genString :: String -> Generator VirtualRegister VirtualRegister
 genString name = do 
     emitCode $ Comment $ "load string \"" ++ name ++ "\""
     contentLabel <- getLabel "string_content"
+    emitData $ Pseudo ".align" $ IntLit 3
     emitData $ DefLabel contentLabel 
     emitData $ Pseudo ".ascii" $ StringLit name 
 
     structLabel <- getLabel "string_struct"
+    emitData $ Pseudo ".align" $ IntLit 3
     emitData $ DefLabel structLabel 
     emitData $ Pseudo ".quad" $ IntLit $ length name 
     emitData $ Pseudo ".quad" $ Label contentLabel
@@ -134,6 +136,7 @@ genString name = do
 genInt :: Int -> Generator VirtualRegister VirtualRegister
 genInt val = do 
     label <- getLabel "int_lit"
+    emitData $ Pseudo ".align" $ IntLit 3
     emitData $ DefLabel label
     emitData $ Pseudo ".quad" $ IntLit val 
     retReg <- getVReg
@@ -154,6 +157,7 @@ genAST expr = do
 
 genProgram :: [Toplevel Resolved] -> Generator VirtualRegister ()
 genProgram program = do 
+        emitData $ Pseudo ".align" $ IntLit 3 -- align data segment
         emitCode $ Pseudo ".global" $ Label "_start"
         emitCode $ DefLabel "_start"
         envt <- genProgramEnvironment [] program
