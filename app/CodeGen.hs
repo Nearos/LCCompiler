@@ -115,6 +115,24 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
 
             return closurePtrReg
 
+genExpr ctx (Construct _ (Bound nm id) subexprs) = do 
+    closurePtrReg <- getVReg 
+    emitCode $ Comment $ "Allocating alternative struct for " ++ nm
+    emitCode $ TwoImmediate "mov" abiArg $ IntLit $ 8 + 8 * length subexprs
+    emitCode $ OneImmediate "bl" $ Label "malloc"
+    emitCode $ TwoRegister "mov" closurePtrReg abiRet
+    constValueReg <- getVReg
+    emitCode $ Comment "put alternative label value in struct"
+    emitCode $ TwoImmediate "mov" constValueReg $ IntLit id 
+    emitCode $ Memory "str" constValueReg $ RegAddr closurePtrReg
+    emitCode $ Comment "putting argument values in struct"
+    forM_ (zip [1..] subexprs) $ \ (num, sexpr) -> do 
+        subExprReg <- genExpr ctx sexpr
+        emitCode $ Memory "str" subExprReg $ ExprAddr closurePtrReg $ 8 * num
+    return closurePtrReg
+
+
+
 genString :: String -> Generator VirtualRegister VirtualRegister
 genString name = do 
     emitCode $ Comment $ "load string \"" ++ name ++ "\""
@@ -175,3 +193,4 @@ genProgram program = do
             exprReg <- genExpr envt' expr 
             emitCode $ TwoRegister "mov" bindingReg exprReg
             genProgramEnvironment envt' rest
+        genProgramEnvironment envt (ConstDef {} : rest) = genProgramEnvironment envt rest 
