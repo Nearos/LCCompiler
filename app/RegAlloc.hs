@@ -45,6 +45,13 @@ instructionTransaction (Memory mnem reg addr) = opTransaction <> addressTransact
                 'l':'d':_ -> RegisterTransaction [] [reg]
                 's':'t':_ -> RegisterTransaction [reg] [] 
 
+instructionTransaction (MemoryThree mnem r1 r2 addr) = opTransaction <> addressTransaction addr
+    where
+        opTransaction 
+            = case mnem of 
+                'l':'d':_ -> RegisterTransaction [] [r1, r2]
+                's':'t':_ -> RegisterTransaction [r1, r2] [] 
+
 instructionTransaction (TwoRegister "mov" r1 r2) = RegisterTransaction [r2] [r1]
 
 instructionTransaction (Comment {}) = mempty
@@ -58,13 +65,13 @@ regAllocNaive ass (inst:insts) = do
     ass <- foldM extendLabelAssignment ass $  consumes ++ produces       
     forM_ consumes $ \case 
         Virt n -> do 
-            emitCode $ Memory "ldr" "x2" $ LabelAddr $ fromJust $ lookup n ass 
+            loadLabel "x2" $ fromJust $ lookup n ass
             emitCode $ Memory "ldr" (findHardRegister n) $ RegAddr "x2"
         _ -> return ()
     emitCode $ replaceRegister <$> inst 
     forM_ produces $ \case 
         Virt n -> do 
-            emitCode $ Memory "ldr" "x2" $ LabelAddr $ fromJust $ lookup n ass 
+            loadLabel "x2" $ fromJust $ lookup n ass
             emitCode $ Memory "str" (findHardRegister n) $ RegAddr "x2"
         _ -> return ()
     regAllocNaive ass insts
@@ -91,6 +98,7 @@ regAllocNaive ass (inst:insts) = do
                 Just {} -> return ass 
                 Nothing -> do 
                     label <- getLabel "register_spill"
+                    emitData $ Pseudo ".align" $ IntLit 3
                     emitData $ DefLabel label
                     emitData $ Pseudo ".quad" $ IntLit 0
                     return $ (n, label) : ass

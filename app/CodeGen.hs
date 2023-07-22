@@ -14,7 +14,7 @@ genExpr :: Environment -> Expr Resolved -> Generator VirtualRegister VirtualRegi
 genExpr ctx (Extern _ name) = do 
     emitCode $ Comment $ "loading external symbol " ++ name 
     externRegister <- getVReg
-    emitCode $ Memory "ldr" externRegister $ LabelAddr name 
+    loadLabel externRegister name
     return externRegister
 
 genExpr _ (Var _ (Free name)) = genString name
@@ -46,12 +46,14 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
 
 
         functionStart = do 
-            emitCode $ Memory "str" (X 29) $ Preorder sp (-8)
-            emitCode $ Memory "str" (X 30) $ Preorder sp (-8)
+            emitCode $ MemoryThree "stp" (X 29) (X 30) $ Preorder sp (-16)
+            -- emitCode $ Memory "str" (X 29) $ Preorder sp (-8)
+            -- emitCode $ Memory "str" (X 30) $ Preorder sp (-8)
 
         functionEnd = do 
-            emitCode $ Memory "ldr" (X 30) $ Postorder sp 8
-            emitCode $ Memory "ldr" (X 29) $ Postorder sp 8
+            emitCode $ MemoryThree "ldp" (X 29) (X 30) $ Postorder sp 16
+            -- emitCode $ Memory "ldr" (X 30) $ Postorder sp 8
+            -- emitCode $ Memory "ldr" (X 29) $ Postorder sp 8
             emitCode $ PseudoZero "ret"
             
         loadEnvironment :: Struct -> Generator VirtualRegister Environment 
@@ -105,7 +107,7 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
 
             emitCode $ Comment "loading function body address"
             codePtrReg <- getVReg
-            emitCode $ Memory "ldr" codePtrReg $ LabelAddr label
+            loadLabel codePtrReg label
 
             contextPtrReg <- initContext contextStruct 
 
@@ -148,7 +150,7 @@ genString name = do
     emitData $ Pseudo ".quad" $ Label contentLabel
 
     ret <- getVReg
-    emitCode $ Memory "ldr" ret $ LabelAddr structLabel 
+    loadLabel ret structLabel
     return ret
 
 genInt :: Int -> Generator VirtualRegister VirtualRegister
@@ -158,7 +160,7 @@ genInt val = do
     emitData $ DefLabel label
     emitData $ Pseudo ".quad" $ IntLit val 
     retReg <- getVReg
-    emitCode $ Memory "ldr" retReg $ LabelAddr label
+    loadLabel retReg label
     return retReg
 
 
@@ -175,7 +177,6 @@ genAST expr = do
 
 genProgram :: [Toplevel Resolved] -> Generator VirtualRegister ()
 genProgram program = do 
-        emitData $ Pseudo ".align" $ IntLit 3 -- align data segment
         emitCode $ Pseudo ".global" $ Label "_start"
         emitCode $ DefLabel "_start"
         envt <- genProgramEnvironment [] program

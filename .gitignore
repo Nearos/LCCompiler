@@ -2,6 +2,7 @@ dist-newstyle
 lambda_src
 lambda_build
 Makefile
+*.o
 
 !runtime/rts.s
 !runtime/macros.s

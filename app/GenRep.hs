@@ -8,6 +8,8 @@ import Binding (Binding)
 data Value 
     = IntLit Int
     | Label String
+    | LabelPage String 
+    | LabelOffset String
     | StringLit String 
     | CharLit Char
 
@@ -27,6 +29,7 @@ data ARM64 reg
     | OneImmediate String Value
     | TwoImmediate String reg Value
     | Memory String reg (Address reg)
+    | MemoryThree String reg reg (Address reg)
     | Comment String -- #comment
     | DefLabel String -- label:
     | Pseudo String Value -- .dword 5
@@ -90,6 +93,13 @@ zero = XZR
 sp :: VirtualRegister
 sp = SP
 
+-- Load Label
+
+loadLabel :: a -> String -> Generator a ()
+loadLabel reg label = do 
+    emitCode $ TwoImmediate "adrp" reg $ LabelPage label 
+    emitCode $ Immediate "add" reg reg $ LabelOffset label
+
 -- Structures 
 
 newtype Struct = Struct [(Binding, Int)] -- [(fieldName, fieldSize)]
@@ -137,7 +147,7 @@ callClosure cl = do
     return resultReg
 
 runGenerator :: Generator a b -> [ARM64 a]
-runGenerator gen = [PseudoZero "", PseudoZero ".text"] ++ reverse (code finalState) ++ [PseudoZero "", PseudoZero ".data"] ++ reverse (constData finalState)
+runGenerator gen = [PseudoZero ".text", Pseudo ".align" $ IntLit 3] ++ reverse (code finalState) ++ [PseudoZero "", PseudoZero ".data"] ++ reverse (constData finalState)
     where 
         finalState = execState gen initialState 
         initialState = GenerationContext [] [] [] 0 0 

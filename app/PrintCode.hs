@@ -8,6 +8,8 @@ class Printable a where
 instance Printable Value where 
     printCode (IntLit l) = show l
     printCode (Label l) = l 
+    printCode (LabelPage l) = l ++ "@PAGE"
+    printCode (LabelOffset l) = l ++ "@PAGEOFF"
     printCode (StringLit lit) = "\"" ++ lit ++ "\""
     printCode (CharLit lit) = "\'" ++ [lit] ++ "\'"
 
@@ -40,6 +42,9 @@ instance Printable reg => Printable (ARM64 reg) where
     
     printCode (Memory mnem r1 val) 
         = "    " ++ mnem ++ " " ++ printCode r1 ++", " ++ printCode val 
+    
+    printCode (MemoryThree mnem r1 r2 val) 
+        = "    " ++ mnem ++ " " ++ printCode r1 ++", " ++ printCode r2 ++ ", " ++ printCode val 
 
     printCode (Comment str) = "\n    //" ++ str 
 
