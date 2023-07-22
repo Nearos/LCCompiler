@@ -1,7 +1,5 @@
 dist-newstyle
 lambda_src
 lambda_build
-Makefile
-
-!runtime/rts.s
-!runtime/macros.s
+*.o
+qemu*.core
