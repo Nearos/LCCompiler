@@ -11,12 +11,14 @@ import GenRep (runGenerator)
 import System.Environment (getArgs)
 import RegAlloc (regAllocNaive)
 import System.Exit (exitFailure)
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
 import Tree (printAST, Toplevel(Binding), printProgram)
 
 data Settings = Settings {
     sourceFile :: String,
-    outputFile :: String
+    outputFile :: String,
+    dumpVirtualRegister :: Maybe String,
+    dumpBound :: Maybe String
     }   
     deriving Show
 
@@ -33,12 +35,14 @@ saveResult settings
 readSettings :: IO Settings
 readSettings = getSettings <$> getArgs
     where 
-        getSettings [] = Settings "" ""
+        getSettings [] = Settings "" "" Nothing Nothing
+        getSettings ("--dVR":file:rest) = (getSettings rest) {dumpVirtualRegister = Just file}
+        getSettings ("--dBound":file:rest) = (getSettings rest) {dumpBound = Just file}
         getSettings ("-o":file:rest) = (getSettings rest) {outputFile = file}
         getSettings (file:rest) = 
             case getSettings rest of 
-                Settings _ "" -> Settings file $ outputize file 
-                Settings _ opt -> Settings file opt       
+                Settings _ "" d1 d2 -> Settings file (outputize file) d1 d2
+                Settings _ opt d1 d2 -> Settings file opt d1 d2
 
         outputize file = 
             let cName = reverse $ dropWhile (/= '.') $ reverse file
@@ -51,13 +55,19 @@ main = do
     settings <- readSettings
     exprSrc <- getSource settings
     -- TODO : whole program
-    case parse parseProgram "stdin" exprSrc of 
+    case parse parseProgram (sourceFile settings) exprSrc of 
         Left perr -> do 
             print perr
             exitFailure
         Right ast -> do 
             let bound = bindProgram ast 
+            case dumpBound settings of 
+                Nothing -> return ()
+                Just file -> writeFile file $ printProgram bound
             let virtGenerated = runGenerator $ genProgram bound 
+            case dumpVirtualRegister settings of 
+                Nothing -> return ()
+                Just file -> writeFile file $ printGenerated virtGenerated
             let allocatedRegisters = runGenerator $ regAllocNaive [] virtGenerated
             saveResult settings $ printGenerated allocatedRegisters
 

@@ -8,7 +8,7 @@ ABI=linux-gnu
 	$(ARCH)-$(ABI)-as -o $@ $<
 
 lambda_build/%.s: lambda_src/%.lambda
-	cabal v2-run lambdac -- -o $@ $<
+	cabal v2-run lambdac -- -o $@ $< --dVR $@.vr --dBound $<.bound
 
 .PHONY: %.run
 

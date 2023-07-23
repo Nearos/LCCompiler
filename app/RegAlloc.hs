@@ -37,6 +37,7 @@ instructionTransaction (OneImmediate mnem _)
     | mnem == "bl" = RegisterTransaction [abiCtx, abiArg] [abiRet] --maybe no context but it's ok
     | otherwise = mempty
 
+instructionTransaction (TwoImmediate "cmp" reg _) = RegisterTransaction [reg] []
 instructionTransaction (TwoImmediate _ reg _) = RegisterTransaction [] [reg]
 instructionTransaction (Memory mnem reg addr) = opTransaction <> addressTransaction addr
     where

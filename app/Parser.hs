@@ -18,6 +18,7 @@ type instance LitMeta Parsed = SourcePos
 type instance ExternMeta Parsed = SourcePos
 type instance BindMeta Parsed = SourcePos
 type instance ConsMeta Parsed = SourcePos
+type instance CaseMeta Parsed = SourcePos
 
 instance ShowablePass [Char] where
     passShow = id 
@@ -77,7 +78,7 @@ parseIntLit = do
     value <- read <$> many1 alphaNum
     return $ SrcIntLit location value
 
-parseAtomic = parseBracketed <|> parseVar <|> parseConst <|> parseExtern <|> parseStringLit 
+parseAtomic = parseBracketed <|> parseVar <|> parseConst <|> parseExtern <|> parseStringLit <|> parseIntLit
 
 parseApp :: Parser (Expr Parsed)
 parseApp = do  
@@ -92,8 +93,37 @@ parseApp = do
             paRec $ App location t1 t2)
             <|> return t1
 
+parsePattern :: Parser (Pattern Parsed)
+parsePattern = do 
+    constant <- parseConstName
+    spaces 
+    vars <- many $ parseSym <* spaces 
+    return $ Pattern constant vars
+
+parseBranch :: Parser (CaseBranch Parsed)
+parseBranch = do 
+    pat <- parsePattern 
+    spaces
+    string "->"
+    spaces
+    inner <- parseExpr
+    string ";"
+    return $ CaseBranch pat inner
+
+
+parseCase :: Parser (Expr Parsed)
+parseCase = do 
+    location <- getPosition
+    try $ string "case"
+    spaces
+    scrut <- parseApp -- don't allow lambda definition to be here - there's no reason
+    string ":"
+    spaces
+    branches <- many1 $ parseBranch <* spaces
+    return $ Case location scrut branches
+
 parseExpr :: Parser (Expr Parsed)
-parseExpr = parseLambda <|> parseApp
+parseExpr = parseLambda <|> parseCase <|> parseApp
 
 parseBinding :: Parser (Toplevel Parsed)
 parseBinding = do 

@@ -11,6 +11,11 @@ type family VarMeta a
 type family ExternMeta a
 type family LitMeta a
 type family ConsMeta a
+type family CaseMeta a
+
+data Pattern a = Pattern (Sym a) [Sym a]
+
+data CaseBranch a = CaseBranch (Pattern a) (Expr a)
 
 data Expr a
     = Lambda (LambdaMeta a) (Sym a) (Expr a)
@@ -20,6 +25,7 @@ data Expr a
     | SrcStringLit (LitMeta a) String
     | SrcIntLit (LitMeta a) Int
     | Extern (ExternMeta a) String
+    | Case (CaseMeta a) (Expr a) [CaseBranch a]
 
 data Toplevel a 
     = Binding (BindMeta a) (Sym a) (Expr a)
@@ -38,13 +44,19 @@ printAST ::
     , ShowablePass (VarMeta a)
     , ShowablePass (ExternMeta a)
     , ShowablePass (LitMeta a)
-    , ShowablePass (ConsMeta a))
+    , ShowablePass (ConsMeta a)
+    , ShowablePass (CaseMeta a))
     => Expr a -> String  
 printAST (Lambda m s b) = "([" ++ passShow m ++ "]\\" ++ passShow s ++ "." ++ printAST b ++ ")"
 printAST (App m a b) = "(" ++ printAST a ++ " " ++ printAST b ++ ")"
 printAST (Var m s) = passShow s 
 printAST (Construct m c subs) = passShow c ++ "{" ++ intercalate ", " (map printAST subs) ++ "}"
 printAST (SrcStringLit m val) = "\"" ++ val ++ "\"" 
+printAST (Case m scrut branches) = "case " ++ printAST scrut ++ ": " ++ concatMap printBranch branches
+    where 
+        printBranch (CaseBranch pat expr) = printPattern pat ++ " -> " ++ printAST expr ++ "; "
+
+        printPattern (Pattern const binds) = unwords $ map passShow $ const : binds
 
 printToplevel (Binding meta sym expr) = passShow sym ++ " = " ++ printAST expr ++ ";"
 printToplevel (ConstDef meat sym arity) = passShow sym ++ " : " ++ show arity ++ ";"
@@ -58,6 +70,7 @@ printProgram ::
     , ShowablePass (VarMeta a)
     , ShowablePass (ExternMeta a)
     , ShowablePass (LitMeta a)
-    , ShowablePass (ConsMeta a))
+    , ShowablePass (ConsMeta a)
+    , ShowablePass (CaseMeta a))
     => [Toplevel a] -> [Char]
 printProgram = intercalate "\n" . map printToplevel 

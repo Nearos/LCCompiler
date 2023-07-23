@@ -81,17 +81,21 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
             popCode
             return label
 
-        initContext :: Struct -> Generator VirtualRegister VirtualRegister
-        initContext contextStruct = do 
+        initContext :: VirtualRegister -> Struct -> Generator VirtualRegister VirtualRegister
+        initContext closurePtrReg contextStruct = do 
             contextPtrReg <- getVReg
             emitCode $ Comment "allocating closure context struct"
             emitCode $ TwoImmediate "mov" abiArg $ IntLit $ sizeOf contextStruct
             emitCode $ OneImmediate "bl" $ Label "malloc"
             emitCode $ TwoRegister "mov" contextPtrReg abiRet
             emitCode $ Comment "populating closure context struct from current context"
+            let selfBinding = case rec_bind meta of 
+                    Just bnd ->[(bnd, closurePtrReg)]
+                    Nothing -> []
+            let closureContext = selfBinding ++ callerContext
             forM_ (captures meta) $ \ binding -> do 
                 let addrInCtxStruct = ExprAddr contextPtrReg $ offsetOf contextStruct binding
-                let currentRegister = fromMaybe undefined $ lookup binding callerContext
+                let currentRegister = fromMaybe undefined $ lookup binding closureContext
                 emitCode $ Memory "str" currentRegister addrInCtxStruct
             return contextPtrReg
         
@@ -107,7 +111,7 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
             codePtrReg <- getVReg
             emitCode $ Memory "ldr" codePtrReg $ LabelAddr label
 
-            contextPtrReg <- initContext contextStruct 
+            contextPtrReg <- initContext closurePtrReg contextStruct 
 
             emitCode $ Comment "populating closure struct"
             emitCode $ Memory "str" codePtrReg $ ExprAddr closurePtrReg $ offsetOf closure ("fn", -1)
@@ -131,6 +135,37 @@ genExpr ctx (Construct _ (Bound nm id) subexprs) = do
         emitCode $ Memory "str" subExprReg $ ExprAddr closurePtrReg $ 8 * num
     return closurePtrReg
 
+genExpr ctx (Case meta scrut branches) = do 
+    emitCode $ Comment "case expression scrutinee"
+    scrutEvaluated <- genExpr ctx scrut 
+    altValue <- getVReg
+    emitCode $ Comment "load discriminating value from memory"
+    emitCode $ Memory "ldr" altValue $ RegAddr scrutEvaluated
+    retValue <- getVReg
+    endLabel <- getLabel "after_case_alternatives"
+    labels <- forM branches $ \ (CaseBranch (Pattern (Bound name id) _) _) -> do 
+        label <- getLabel "case_alternative"
+        emitCode $ Comment $ "checking for alternative for " ++ name
+        emitCode $ TwoImmediate "cmp" altValue $ IntLit id
+        emitCode $ OneImmediate "beq" $ Label label
+        return label
+    emitCode $ Comment "alternatives code"
+    emitCode $ OneImmediate "b" $ Label endLabel
+    forM_ (zip labels branches) $ \ (branchLabel, CaseBranch (Pattern _ bindings) expr) -> do
+        emitCode $ DefLabel branchLabel 
+        emitCode $ Comment "loading pattern bindings"
+        -- genrate espression with bindings in context
+        newContext <- forM (zip [1..] bindings) $ \ (offsetIndex, Bound name id) -> do 
+            bindingReg <- getVReg
+            emitCode $ Memory "ldr" bindingReg $ ExprAddr scrutEvaluated $ offsetIndex * 8
+            return ((name, id), bindingReg)
+        let innerContext = newContext ++ ctx
+        emitCode $ Comment "case inner expression"
+        exprRet <- genExpr innerContext expr
+        emitCode $ TwoRegister "mov" retValue exprRet
+        emitCode $ OneImmediate "b" $ Label endLabel
+    emitCode $ DefLabel endLabel
+    return retValue
 
 
 genString :: String -> Generator VirtualRegister VirtualRegister
@@ -185,8 +220,8 @@ genProgram program = do
         genProgramEnvironment envt (Binding _ (Bound name id) expr : rest) = do 
             emitCode $ Comment $ "Generating global symbol " ++ name
             bindingReg <- getVReg
-            let envt' = ((name, id), bindingReg) : envt 
-            exprReg <- genExpr envt' expr 
+            exprReg <- genExpr envt expr 
+            let envt' = ((name, id), bindingReg) : envt
             emitCode $ TwoRegister "mov" bindingReg exprReg
             genProgramEnvironment envt' rest
         genProgramEnvironment envt (ConstDef {} : rest) = genProgramEnvironment envt rest 
