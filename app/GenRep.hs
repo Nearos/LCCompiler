@@ -36,7 +36,7 @@ data ARM64 reg
 data GenerationContext reg
     = GenerationContext {
         pushedCode :: [[ARM64 reg]],
-        code :: [ARM64 reg],
+        code :: [[ARM64 reg]],
         constData :: [ARM64 reg],
         labelId :: Int,
         registerId :: Int
@@ -47,7 +47,7 @@ type Generator reg = State (GenerationContext reg)
 --  saves the current positon in generation to generate a new section, which is placed at the top when code is popped again
 
 pushCode :: Generator a () 
-pushCode = modify $ \ctx -> ctx { code = [], pushedCode = code ctx : pushedCode ctx}
+pushCode = modify $ \ctx -> ctx { code = [] : code ctx, pushedCode = head (code ctx) : pushedCode ctx}
 
 popCode :: Generator a () 
 popCode 
@@ -55,10 +55,12 @@ popCode
         \ctx -> 
             case pushedCode ctx of 
                 [] -> ctx 
-                x : xs -> ctx {code = x ++ code ctx, pushedCode = xs}
+                x : xs -> ctx {code = x : code ctx, pushedCode = xs}
 
 emitCode :: ARM64 a -> Generator a ()
-emitCode line = modify $ \ ctx -> ctx { code = line : code ctx}
+emitCode line = modify $ 
+    \ ctx -> case code ctx of 
+        first : rest -> ctx { code = (line : first) : rest}
 
 emitData :: ARM64 a -> Generator a ()
 emitData line = modify $ \ ctx -> ctx { constData = line : constData ctx}
@@ -137,7 +139,18 @@ callClosure cl = do
     return resultReg
 
 runGenerator :: Generator a b -> [ARM64 a]
-runGenerator gen = [PseudoZero "", PseudoZero ".text"] ++ reverse (code finalState) ++ [PseudoZero "", PseudoZero ".data"] ++ reverse (constData finalState)
+runGenerator gen = 
+    [PseudoZero "", PseudoZero ".text"] 
+    ++ reverse (concatMap reverse $ code finalState) 
+
+    ++ [PseudoZero "", PseudoZero ".data"] 
+    ++ reverse (constData finalState)
     where 
         finalState = execState gen initialState 
-        initialState = GenerationContext [] [] [] 0 0 
+        initialState = GenerationContext {
+            pushedCode = [],
+            code = [[]],
+            constData = [],
+            labelId = 0,
+            registerId = 0
+        }
