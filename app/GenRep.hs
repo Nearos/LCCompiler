@@ -47,7 +47,7 @@ type Generator reg = State (GenerationContext reg)
 --  saves the current positon in generation to generate a new section, which is placed at the top when code is popped again
 
 pushCode :: Generator a () 
-pushCode = modify $ \ctx -> ctx { code = [] : code ctx, pushedCode = head (code ctx) : pushedCode ctx}
+pushCode = modify $ \ctx -> ctx { code = [] : tail (code ctx), pushedCode = head (code ctx) : pushedCode ctx}
 
 popCode :: Generator a () 
 popCode 
@@ -141,16 +141,18 @@ callClosure cl = do
 runGenerator :: Generator a b -> [ARM64 a]
 runGenerator gen = 
     [PseudoZero "", PseudoZero ".text"] 
-    ++ reverse (concatMap reverse $ code finalState) 
+    ++ reverse (concat $ code finalState) 
 
     ++ [PseudoZero "", PseudoZero ".data"] 
     ++ reverse (constData finalState)
     where 
         finalState = execState gen initialState 
-        initialState = GenerationContext {
-            pushedCode = [],
-            code = [[]],
-            constData = [],
-            labelId = 0,
-            registerId = 0
-        }
+
+initialState :: GenerationContext reg
+initialState = GenerationContext {
+    pushedCode = [],
+    code = [[]],
+    constData = [],
+    labelId = 0,
+    registerId = 0
+}
