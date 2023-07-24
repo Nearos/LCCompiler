@@ -9,6 +9,19 @@ import Data.Maybe (fromMaybe, fromJust)
 
 type Environment = [(Binding, VirtualRegister)]
 
+allocate :: Int -> Generator VirtualRegister VirtualRegister
+allocate n = do
+    retReg <- getVReg
+    emitCode $ TwoImmediate "mov" abiArg $ IntLit n 
+    emitCode $ OneImmediate "bl" $ Label "malloc"
+    emitCode $ TwoRegister "mov" retReg abiRet
+    return retReg
+
+enstructure :: VirtualRegister -> [VirtualRegister] -> Generator VirtualRegister ()
+enstructure memoryLocation registers = do 
+    forM_ (zip [0..] registers) $ \ (offsetNumber, register) -> do 
+        emitCode $ Memory "str" register $ ExprAddr memoryLocation $ offsetNumber * 8
+
 genExpr :: Environment -> Expr Resolved -> Generator VirtualRegister VirtualRegister
 
 genExpr ctx (Extern _ name) = do 
@@ -83,11 +96,8 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
 
         initContext :: VirtualRegister -> Struct -> Generator VirtualRegister VirtualRegister
         initContext closurePtrReg contextStruct = do 
-            contextPtrReg <- getVReg
             emitCode $ Comment "allocating closure context struct"
-            emitCode $ TwoImmediate "mov" abiArg $ IntLit $ sizeOf contextStruct
-            emitCode $ OneImmediate "bl" $ Label "malloc"
-            emitCode $ TwoRegister "mov" contextPtrReg abiRet
+            contextPtrReg <- allocate $ sizeOf contextStruct
             emitCode $ Comment "populating closure context struct from current context"
             let selfBinding = case rec_bind meta of 
                     Just bnd ->[(bnd, closurePtrReg)]
@@ -103,9 +113,7 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
         initClosure contextStruct label = do 
             closurePtrReg <- getVReg
             emitCode $ Comment "Allocating closure struct"
-            emitCode $ TwoImmediate "mov" abiArg $ IntLit $ sizeOf closure
-            emitCode $ OneImmediate "bl" $ Label "malloc"
-            emitCode $ TwoRegister "mov" closurePtrReg abiRet
+            closurePtrReg <- allocate $ sizeOf closure
 
             emitCode $ Comment "loading function body address"
             codePtrReg <- getVReg
@@ -114,26 +122,22 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
             contextPtrReg <- initContext closurePtrReg contextStruct 
 
             emitCode $ Comment "populating closure struct"
-            emitCode $ Memory "str" codePtrReg $ ExprAddr closurePtrReg $ offsetOf closure ("fn", -1)
-            emitCode $ Memory "str" contextPtrReg $ ExprAddr closurePtrReg $ offsetOf closure ("context", -1)
-
+            enstructure closurePtrReg [codePtrReg, contextPtrReg]
+            
             return closurePtrReg
 
 genExpr ctx (Construct _ (Bound nm id) subexprs) = do 
-    closurePtrReg <- getVReg 
     emitCode $ Comment $ "Allocating alternative struct for " ++ nm
-    emitCode $ TwoImmediate "mov" abiArg $ IntLit $ 8 + 8 * length subexprs
-    emitCode $ OneImmediate "bl" $ Label "malloc"
-    emitCode $ TwoRegister "mov" closurePtrReg abiRet
+    structPtrReg <- allocate $ 8 + 8 * length subexprs
+
     constValueReg <- getVReg
     emitCode $ Comment "put alternative label value in struct"
     emitCode $ TwoImmediate "mov" constValueReg $ IntLit id 
-    emitCode $ Memory "str" constValueReg $ RegAddr closurePtrReg
-    emitCode $ Comment "putting argument values in struct"
-    forM_ (zip [1..] subexprs) $ \ (num, sexpr) -> do 
-        subExprReg <- genExpr ctx sexpr
-        emitCode $ Memory "str" subExprReg $ ExprAddr closurePtrReg $ 8 * num
-    return closurePtrReg
+
+    subExprRegs <- mapM (genExpr ctx) subexprs
+
+    enstructure structPtrReg (constValueReg : subExprRegs)
+    return structPtrReg
 
 genExpr ctx (Case meta scrut branches) = do 
     emitCode $ Comment "case expression scrutinee"
