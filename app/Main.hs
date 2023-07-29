@@ -7,7 +7,7 @@ import qualified Data.ByteString as BS
 import Binding (resolveBindings, bindProgram)
 import CodeGen (genProgram)
 import PrintCode (Printable(printCode), printGenerated)
-import GenRep (runGenerator)
+import GenRep (runGenerator, bindGenerator, emitCode)
 import System.Environment (getArgs)
 import RegAlloc (regAllocNaive)
 import System.Exit (exitFailure)
@@ -64,7 +64,7 @@ main = do
             case dumpBound settings of 
                 Nothing -> return ()
                 Just file -> writeFile file $ printProgram bound
-            let virtGenerated = runGenerator $ genProgram bound 
+            let virtGenerated = runGenerator $ bindGenerator (mapM_ emitCode) $ genProgram bound 
             case dumpVirtualRegister settings of 
                 Nothing -> return ()
                 Just file -> writeFile file $ printGenerated virtGenerated

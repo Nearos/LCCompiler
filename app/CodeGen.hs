@@ -12,22 +12,22 @@ type Environment = [(Binding, VirtualRegister)]
 allocate :: Int -> Generator VirtualRegister VirtualRegister
 allocate n = do
     retReg <- getVReg
-    emitCode $ TwoImmediate "mov" abiArg $ IntLit n 
-    emitCode $ OneImmediate "bl" $ Label "malloc"
-    emitCode $ TwoRegister "mov" retReg abiRet
+    emitCode $ InstFlex "mov" [Out abiArg] $ ImmInt n 
+    emitCode $ funcallFlex "bl" [] $ ImmLabel "malloc"
+    emitCode $ InstRegs "mov" [Out retReg, In abiRet]
     return retReg
 
 enstructure :: VirtualRegister -> [VirtualRegister] -> Generator VirtualRegister ()
 enstructure memoryLocation registers = do 
     forM_ (zip [0..] registers) $ \ (offsetNumber, register) -> do 
-        emitCode $ Memory "str" register $ ExprAddr memoryLocation $ offsetNumber * 8
+        emitCode $ InstFlex "str" [In register] $ DerefExpr memoryLocation $ offsetNumber * 8
 
 genExpr :: Environment -> Expr Resolved -> Generator VirtualRegister VirtualRegister
 
 genExpr ctx (Extern _ name) = do 
     emitCode $ Comment $ "loading external symbol " ++ name 
     externRegister <- getVReg
-    emitCode $ Memory "ldr" externRegister $ LabelAddr name 
+    emitCode $ InstFlex "ldr" [Out externRegister] $ LabelAddr name 
     return externRegister
 
 genExpr _ (Var _ (Free name)) = genString name
@@ -43,7 +43,7 @@ genExpr ctx (App _ a b) = do
     aReg <- genExpr ctx a 
     bReg <- genExpr ctx b 
     emitCode $ Comment "Load closure arg"
-    emitCode $ TwoRegister "mov" abiArg bReg
+    emitCode $ InstRegs "mov" [Out abiArg, In bReg]
     callClosure aReg
 
 genExpr callerContext (Lambda meta (Bound name id) body) = do 
@@ -59,23 +59,23 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
 
 
         functionStart = do 
-            emitCode $ Memory "str" (X 29) $ Preorder sp (-8)
-            emitCode $ Memory "str" (X 30) $ Preorder sp (-8)
+            emitCode $ InstFlex "str" [In (X 29)] $ DerefPre sp (-8)
+            emitCode $ InstFlex "str" [In (X 30)] $ DerefPre sp (-8)
 
         functionEnd = do 
-            emitCode $ Memory "ldr" (X 30) $ Postorder sp 8
-            emitCode $ Memory "ldr" (X 29) $ Postorder sp 8
-            emitCode $ PseudoZero "ret"
+            emitCode $ InstFlex "ldr" [Out (X 30)] $ DerefPost sp 8
+            emitCode $ InstFlex "ldr" [Out (X 29)] $ DerefPost sp 8
+            emitCode $ InstHiddenReg "ret" [In (X 29), In (X 30), In abiRet] []
             
         loadEnvironment :: Struct -> Generator VirtualRegister Environment 
         loadEnvironment ctx = do 
             argReg <- getVReg
             emitCode $ Comment "load argument into register"
-            emitCode $ TwoRegister "mov" argReg abiArg
+            emitCode $ InstRegs "mov" [Out argReg, In abiArg]
             emitCode $ Comment "load closure environment into registers"
             context <- forM (captures meta) $ \ fieldBdg  -> do 
                 fieldReg <- getVReg
-                emitCode $ Memory "ldr" fieldReg $ ExprAddr abiCtx $ offsetOf ctx fieldBdg
+                emitCode $ InstFlex "ldr" [Out fieldReg] $ DerefExpr abiCtx $ offsetOf ctx fieldBdg
                 return (fieldBdg, fieldReg)
             return $ context ++ [((name, id), argReg)]
 
@@ -89,7 +89,7 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
             emitCode $ Comment "function body expr"
             resultReg <- genExpr env body
             emitCode $ Comment "move result into return register"
-            emitCode $ TwoRegister "mov" abiRet resultReg
+            emitCode $ InstRegs "mov" [Out abiRet, In resultReg]
             functionEnd
             popCode
             return label
@@ -104,9 +104,9 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
                     Nothing -> []
             let closureContext = selfBinding ++ callerContext
             forM_ (captures meta) $ \ binding -> do 
-                let addrInCtxStruct = ExprAddr contextPtrReg $ offsetOf contextStruct binding
+                let addrInCtxStruct = DerefExpr contextPtrReg $ offsetOf contextStruct binding
                 let currentRegister = fromMaybe undefined $ lookup binding closureContext
-                emitCode $ Memory "str" currentRegister addrInCtxStruct
+                emitCode $ InstFlex "str" [In currentRegister] addrInCtxStruct
             return contextPtrReg
         
         initClosure :: Struct -> String -> Generator VirtualRegister VirtualRegister
@@ -117,7 +117,7 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
 
             emitCode $ Comment "loading function body address"
             codePtrReg <- getVReg
-            emitCode $ Memory "ldr" codePtrReg $ LabelAddr label
+            emitCode $ InstFlex "ldr" [Out codePtrReg] $ LabelAddr label
 
             contextPtrReg <- initContext closurePtrReg contextStruct 
 
@@ -132,7 +132,7 @@ genExpr ctx (Construct _ (Bound nm id) subexprs) = do
 
     constValueReg <- getVReg
     emitCode $ Comment "put alternative label value in struct"
-    emitCode $ TwoImmediate "mov" constValueReg $ IntLit id 
+    emitCode $ InstFlex "mov" [Out constValueReg] $ ImmInt id 
 
     subExprRegs <- mapM (genExpr ctx) subexprs
 
@@ -144,30 +144,30 @@ genExpr ctx (Case meta scrut branches) = do
     scrutEvaluated <- genExpr ctx scrut 
     altValue <- getVReg
     emitCode $ Comment "load discriminating value from memory"
-    emitCode $ Memory "ldr" altValue $ RegAddr scrutEvaluated
+    emitCode $ InstFlex "ldr" [Out altValue] $ DerefReg scrutEvaluated
     retValue <- getVReg
     endLabel <- getLabel "after_case_alternatives"
     labels <- forM branches $ \ (CaseBranch (Pattern (Bound name id) _) _) -> do 
         label <- getLabel "case_alternative"
         emitCode $ Comment $ "checking for alternative for " ++ name
-        emitCode $ TwoImmediate "cmp" altValue $ IntLit id
-        emitCode $ OneImmediate "beq" $ Label label
+        emitCode $ InstFlex "cmp" [In altValue] $ ImmInt id
+        emitCode $ InstFlex "beq" [] $ ImmLabel label
         return label
     emitCode $ Comment "alternatives code"
-    emitCode $ OneImmediate "b" $ Label endLabel
+    emitCode $ InstFlex "b" []  $ ImmLabel endLabel
     forM_ (zip labels branches) $ \ (branchLabel, CaseBranch (Pattern _ bindings) expr) -> do
         emitCode $ DefLabel branchLabel 
         emitCode $ Comment "loading pattern bindings"
         -- genrate espression with bindings in context
         newContext <- forM (zip [1..] bindings) $ \ (offsetIndex, Bound name id) -> do 
             bindingReg <- getVReg
-            emitCode $ Memory "ldr" bindingReg $ ExprAddr scrutEvaluated $ offsetIndex * 8
+            emitCode $ InstFlex "ldr" [Out bindingReg] $ DerefExpr scrutEvaluated $ offsetIndex * 8
             return ((name, id), bindingReg)
         let innerContext = newContext ++ ctx
         emitCode $ Comment "case inner expression"
         exprRet <- genExpr innerContext expr
-        emitCode $ TwoRegister "mov" retValue exprRet
-        emitCode $ OneImmediate "b" $ Label endLabel
+        emitCode $ InstRegs "mov" [Out retValue, In exprRet]
+        emitCode $ InstFlex "b" [] $ ImmLabel endLabel
     emitCode $ DefLabel endLabel
     return retValue
 
@@ -177,48 +177,36 @@ genString name = do
     emitCode $ Comment $ "load string \"" ++ name ++ "\""
     contentLabel <- getLabel "string_content"
     emitData $ DefLabel contentLabel 
-    emitData $ Pseudo ".ascii" $ StringLit name 
+    emitData $ Pseudo ".ascii" $ ImmString name 
 
     structLabel <- getLabel "string_struct"
     emitData $ DefLabel structLabel 
-    emitData $ Pseudo ".quad" $ IntLit $ length name 
-    emitData $ Pseudo ".quad" $ Label contentLabel
+    emitData $ Pseudo ".quad" $ ImmInt $ length name 
+    emitData $ Pseudo ".quad" $ ImmLabel contentLabel
 
     ret <- getVReg
-    emitCode $ Memory "ldr" ret $ LabelAddr structLabel 
+    emitCode $ InstFlex "ldr" [Out ret] $ LabelAddr structLabel 
     return ret
 
 genInt :: Int -> Generator VirtualRegister VirtualRegister
 genInt val = do 
     label <- getLabel "int_lit"
     emitData $ DefLabel label
-    emitData $ Pseudo ".quad" $ IntLit val 
+    emitData $ Pseudo ".quad" $ ImmInt val 
     retReg <- getVReg
-    emitCode $ Memory "ldr" retReg $ LabelAddr label
+    emitCode $ InstFlex "ldr" [Out retReg] $ LabelAddr label
     return retReg
-
-
-{-# DEPRECATED #-}
-genAST :: Expr Resolved -> Generator VirtualRegister ()
-genAST expr = do 
-    emitCode $ Pseudo ".global" $ Label "_start"
-    emitCode $ DefLabel "_start"
-    result <- genExpr [] expr
-    emitCode $ TwoRegister "mov" abiArg result 
-    emitCode $ OneImmediate "bl" $ Label "print_message"
-    emitCode $ OneImmediate "bl" $ Label "print_newline"
-    emitCode $ OneImmediate "bl" $ Label "exit"
 
 genProgram :: [Toplevel Resolved] -> Generator VirtualRegister ()
 genProgram program = do 
-        emitCode $ Pseudo ".global" $ Label "_start"
+        emitCode $ Pseudo ".global" $ ImmLabel "_start"
         emitCode $ DefLabel "_start"
         envt <- genProgramEnvironment [] program
         let mainReg = fromJust $ lookup ("main", -1) envt 
-        emitCode $ TwoRegister "mov" abiArg mainReg 
-        emitCode $ OneImmediate "bl" $ Label "print_message"
-        emitCode $ OneImmediate "bl" $ Label "print_newline"
-        emitCode $ OneImmediate "bl" $ Label "exit"
+        emitCode $ InstRegs "mov" [Out abiArg, In mainReg]
+        emitCode $ funcallFlex "bl" [] $ ImmLabel "print_message"
+        emitCode $ funcallFlex "bl" [] $ ImmLabel "print_newline"
+        emitCode $ funcallFlex "bl" [] $ ImmLabel "exit"
     where 
         genProgramEnvironment envt [] = return envt
         genProgramEnvironment envt (Binding _ (Bound name id) expr : rest) = do 
@@ -226,6 +214,6 @@ genProgram program = do
             bindingReg <- getVReg
             exprReg <- genExpr envt expr 
             let envt' = ((name, id), bindingReg) : envt
-            emitCode $ TwoRegister "mov" bindingReg exprReg
+            emitCode $ InstRegs "mov" [Out bindingReg, In exprReg]
             genProgramEnvironment envt' rest
         genProgramEnvironment envt (ConstDef {} : rest) = genProgramEnvironment envt rest 

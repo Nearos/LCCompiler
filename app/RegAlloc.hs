@@ -19,39 +19,29 @@ instance Semigroup (RegisterTransaction reg) where
 instance Monoid (RegisterTransaction reg) where 
     mempty = RegisterTransaction [] []
     
-addressTransaction :: Address reg -> RegisterTransaction reg
-addressTransaction (RegAddr reg) = RegisterTransaction [reg] []
-addressTransaction (ExprAddr reg _) = RegisterTransaction [reg] []
-addressTransaction (Preorder reg _) = RegisterTransaction [reg] [reg]
-addressTransaction (Postorder reg _) = RegisterTransaction [reg] [reg]
-addressTransaction (LabelAddr _) = RegisterTransaction [] []
+flexArgTransaction :: FlexibleArg reg -> RegisterTransaction reg
+flexArgTransaction (DerefReg reg) = RegisterTransaction [reg] [] 
+flexArgTransaction (LabelAddr _) = mempty
+flexArgTransaction (DerefExpr reg _) = RegisterTransaction [reg] []
+flexArgTransaction (DerefPost reg _) = RegisterTransaction [reg] [reg]
+flexArgTransaction (DerefPre reg _ ) = RegisterTransaction [reg] [reg]
+flexArgTransaction (ImmInt _) = mempty
+flexArgTransaction (ImmLabel _) = mempty
+flexArgTransaction (ImmString _) = mempty
+flexArgTransaction (ImmChar _) = mempty
 
-instructionTransaction :: ARM64 VirtualRegister -> RegisterTransaction VirtualRegister
+regArgTransaction :: RegArg reg -> RegisterTransaction reg
+regArgTransaction (In reg) = RegisterTransaction [reg] []
+regArgTransaction (Out reg) = RegisterTransaction [] [reg]
+regArgTransaction (InOut reg) = RegisterTransaction [reg] [reg]
 
-instructionTransaction (Immediate _ r1 r2 _) = RegisterTransaction [r2] [r1]
-instructionTransaction (Register _ rr r1 r2) = RegisterTransaction [r1, r2] [rr]
-instructionTransaction (OneRegister mnem r1)
-    | mnem == "blr" = RegisterTransaction [r1, abiCtx, abiArg] [abiRet] -- function call instructionTransaction argument and context
+instructionTransaction :: ARM64 reg -> RegisterTransaction reg
+instructionTransaction (InstFlex _ regs flex) = foldMap regArgTransaction regs <> flexArgTransaction flex
+instructionTransaction (InstRegs _ regs) = foldMap regArgTransaction regs 
+instructionTransaction (InstHiddenFlex _ regs1 regs2 flex) = foldMap regArgTransaction (regs1 <> regs2) <> flexArgTransaction flex
+instructionTransaction (InstHiddenReg _ regs1 regs2) = foldMap regArgTransaction (regs1 <> regs2) 
+instructionTransaction _ = mempty
 
-instructionTransaction (OneImmediate mnem _) 
-    | mnem == "bl" = RegisterTransaction [abiCtx, abiArg] [abiRet] --maybe no context but it's ok
-    | otherwise = mempty
-
-instructionTransaction (TwoImmediate "cmp" reg _) = RegisterTransaction [reg] []
-instructionTransaction (TwoImmediate _ reg _) = RegisterTransaction [] [reg]
-instructionTransaction (Memory mnem reg addr) = opTransaction <> addressTransaction addr
-    where
-        opTransaction 
-            = case mnem of 
-                'l':'d':_ -> RegisterTransaction [] [reg]
-                's':'t':_ -> RegisterTransaction [reg] [] 
-
-instructionTransaction (TwoRegister "mov" r1 r2) = RegisterTransaction [r2] [r1]
-
-instructionTransaction (Comment {}) = mempty
-instructionTransaction (DefLabel {}) = mempty
-instructionTransaction (Pseudo {}) = mempty
-instructionTransaction (PseudoZero {}) = mempty
 
 regAllocNaive :: [(Int, String)] -> [ARM64 VirtualRegister] -> Generator String ()
 regAllocNaive _ [] = return ()
@@ -59,14 +49,14 @@ regAllocNaive ass (inst:insts) = do
     ass <- foldM extendLabelAssignment ass $  consumes ++ produces       
     forM_ consumes $ \case 
         Virt n -> do 
-            emitCode $ Memory "ldr" "x2" $ LabelAddr $ fromJust $ lookup n ass 
-            emitCode $ Memory "ldr" (findHardRegister n) $ RegAddr "x2"
+            emitCode $ InstFlex "ldr" [Out "x2"] $ LabelAddr $ fromJust $ lookup n ass 
+            emitCode $ InstFlex "ldr" [Out $ findHardRegister n] $ DerefReg "x2"
         _ -> return ()
     emitCode $ replaceRegister <$> inst 
     forM_ produces $ \case 
         Virt n -> do 
-            emitCode $ Memory "ldr" "x2" $ LabelAddr $ fromJust $ lookup n ass 
-            emitCode $ Memory "str" (findHardRegister n) $ RegAddr "x2"
+            emitCode $ InstFlex "ldr" [In "x2"] $ LabelAddr $ fromJust $ lookup n ass 
+            emitCode $ InstFlex "str" [In $ findHardRegister n] $ DerefReg "x2"
         _ -> return ()
     regAllocNaive ass insts
     where 
@@ -93,7 +83,7 @@ regAllocNaive ass (inst:insts) = do
                 Nothing -> do 
                     label <- getLabel "register_spill"
                     emitData $ DefLabel label
-                    emitData $ Pseudo ".quad" $ IntLit 0
+                    emitData $ Pseudo ".quad" $ ImmInt 0
                     return $ (n, label) : ass
 
         extendLabelAssignment ass _ = return ass

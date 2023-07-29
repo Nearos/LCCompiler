@@ -2,44 +2,38 @@
 module PrintCode where 
 
 import GenRep
+import Data.List (intercalate)
 class Printable a where 
     printCode :: a -> String 
 
-instance Printable Value where 
-    printCode (IntLit l) = show l
-    printCode (Label l) = l 
-    printCode (StringLit lit) = "\"" ++ lit ++ "\""
-    printCode (CharLit lit) = "\'" ++ [lit] ++ "\'"
+instance Printable reg => Printable (RegArg reg) where
+    printCode (In reg) = printCode reg
+    printCode (Out reg) = printCode reg
+    printCode (InOut reg) = printCode reg
 
-
-instance Printable reg => Printable (Address reg) where 
-    printCode (RegAddr reg) = "[" ++ printCode reg ++ "]" 
+instance Printable reg => Printable (FlexibleArg reg) where 
+    printCode (ImmInt l) = show l
+    printCode (ImmLabel l) = l 
+    printCode (ImmString lit) = "\"" ++ lit ++ "\""
+    printCode (ImmChar lit) = "\'" ++ [lit] ++ "\'"
+    printCode (DerefReg reg) = "[" ++ printCode reg ++ "]" 
     printCode (LabelAddr str) = "="++str 
-    printCode (ExprAddr reg n) = "[" ++ printCode reg ++", " ++ show n ++ "]"
-    printCode (Preorder reg n) = "[" ++ printCode reg ++", " ++ show n ++ "]!"
-    printCode (Postorder reg n) = "[" ++ printCode reg ++"], " ++ show n
+    printCode (DerefExpr reg n) = "[" ++ printCode reg ++", " ++ show n ++ "]"
+    printCode (DerefPre reg n) = "[" ++ printCode reg ++", " ++ show n ++ "]!"
+    printCode (DerefPost reg n) = "[" ++ printCode reg ++"], " ++ show n
 
 instance Printable reg => Printable (ARM64 reg) where 
-    printCode (Immediate mnem r1 r2 val) 
-        = "    " ++ mnem ++ " " ++ printCode r1 ++", " ++ printCode r2 ++ ", " ++ printCode val
-
-    printCode (Register mnem r1 r2 r3) 
-        = "    " ++ mnem ++ " " ++ printCode r1 ++", " ++ printCode r2 ++ ", " ++ printCode r3 
+    printCode (InstFlex mnem regargs  val) 
+        = "    " ++ mnem ++ " " ++  concatMap ((++ ", ") . printCode) regargs ++ printCode val
     
-    printCode (OneImmediate mnem val) 
-        = "    " ++ mnem ++ " " ++ printCode val 
+    printCode (InstRegs mnem regargs) 
+        = "    " ++ mnem ++ " " ++ intercalate ", " (map printCode regargs) 
 
-    printCode (TwoImmediate mnem r1 val) 
-        = "    " ++ mnem ++ " " ++ printCode r1 ++", " ++ printCode val 
+    printCode (InstHiddenFlex mnem _ regargs  val) 
+        = "    " ++ mnem ++ " " ++ concatMap ((++ ", ") . printCode) regargs ++ printCode val
 
-    printCode (OneRegister mnem r1) 
-        = "    " ++ mnem ++ " " ++ printCode r1
-
-    printCode (TwoRegister mnem r1 r2) 
-        = "    " ++ mnem ++ " " ++ printCode r1 ++", " ++ printCode r2
-    
-    printCode (Memory mnem r1 val) 
-        = "    " ++ mnem ++ " " ++ printCode r1 ++", " ++ printCode val 
+    printCode (InstHiddenReg mnem _ regargs) 
+        = "    " ++ mnem ++ " " ++ intercalate ", " (map printCode regargs) 
 
     printCode (Comment str) = "\n    //" ++ str 
 
