@@ -9,7 +9,7 @@ import Data.Maybe (fromMaybe, fromJust)
 
 type Environment = [(Binding, VirtualRegister)]
 
-allocate :: Int -> Generator VirtualRegister VirtualRegister
+allocate :: Int -> Generator (ARM64 VirtualRegister) VirtualRegister
 allocate n = do
     retReg <- getVReg
     emitCode $ InstFlex "mov" [Out abiArg] $ ImmInt n 
@@ -17,12 +17,12 @@ allocate n = do
     emitCode $ InstRegs "mov" [Out retReg, In abiRet]
     return retReg
 
-enstructure :: VirtualRegister -> [VirtualRegister] -> Generator VirtualRegister ()
+enstructure :: VirtualRegister -> [VirtualRegister] -> Generator (ARM64 VirtualRegister) ()
 enstructure memoryLocation registers = do 
     forM_ (zip [0..] registers) $ \ (offsetNumber, register) -> do 
         emitCode $ InstFlex "str" [In register] $ DerefExpr memoryLocation $ offsetNumber * 8
 
-genExpr :: Environment -> Expr Resolved -> Generator VirtualRegister VirtualRegister
+genExpr :: Environment -> Expr Resolved -> Generator (ARM64 VirtualRegister) VirtualRegister
 
 genExpr ctx (Extern _ name) = do 
     emitCode $ Comment $ "loading external symbol " ++ name 
@@ -67,7 +67,7 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
             emitCode $ InstFlex "ldr" [Out (X 29)] $ DerefPost sp 8
             emitCode $ InstHiddenReg "ret" [In (X 29), In (X 30), In abiRet] []
             
-        loadEnvironment :: Struct -> Generator VirtualRegister Environment 
+        loadEnvironment :: Struct -> Generator (ARM64 VirtualRegister) Environment 
         loadEnvironment ctx = do 
             argReg <- getVReg
             emitCode $ Comment "load argument into register"
@@ -79,7 +79,7 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
                 return (fieldBdg, fieldReg)
             return $ context ++ [((name, id), argReg)]
 
-        genBody :: Struct -> Generator VirtualRegister String
+        genBody :: Struct -> Generator (ARM64 VirtualRegister) String
         genBody contextStruct = do 
             label <- getLabel "lambda_body"
             pushCode -- this code is the function definition
@@ -94,7 +94,7 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
             popCode
             return label
 
-        initContext :: VirtualRegister -> Struct -> Generator VirtualRegister VirtualRegister
+        initContext :: VirtualRegister -> Struct -> Generator (ARM64 VirtualRegister) VirtualRegister
         initContext closurePtrReg contextStruct = do 
             emitCode $ Comment "allocating closure context struct"
             contextPtrReg <- allocate $ sizeOf contextStruct
@@ -109,7 +109,7 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
                 emitCode $ InstFlex "str" [In currentRegister] addrInCtxStruct
             return contextPtrReg
         
-        initClosure :: Struct -> String -> Generator VirtualRegister VirtualRegister
+        initClosure :: Struct -> String -> Generator (ARM64 VirtualRegister) VirtualRegister
         initClosure contextStruct label = do 
             closurePtrReg <- getVReg
             emitCode $ Comment "Allocating closure struct"
@@ -172,7 +172,7 @@ genExpr ctx (Case meta scrut branches) = do
     return retValue
 
 
-genString :: String -> Generator VirtualRegister VirtualRegister
+genString :: String -> Generator (ARM64 VirtualRegister) VirtualRegister
 genString name = do 
     emitCode $ Comment $ "load string \"" ++ name ++ "\""
     contentLabel <- getLabel "string_content"
@@ -188,7 +188,7 @@ genString name = do
     emitCode $ InstFlex "ldr" [Out ret] $ LabelAddr structLabel 
     return ret
 
-genInt :: Int -> Generator VirtualRegister VirtualRegister
+genInt :: Int -> Generator (ARM64 VirtualRegister) VirtualRegister
 genInt val = do 
     label <- getLabel "int_lit"
     emitData $ DefLabel label
@@ -197,7 +197,7 @@ genInt val = do
     emitCode $ InstFlex "ldr" [Out retReg] $ LabelAddr label
     return retReg
 
-genProgram :: [Toplevel Resolved] -> Generator VirtualRegister ()
+genProgram :: [Toplevel Resolved] -> Generator (ARM64 VirtualRegister) ()
 genProgram program = do 
         emitCode $ Pseudo ".global" $ ImmLabel "_start"
         emitCode $ DefLabel "_start"

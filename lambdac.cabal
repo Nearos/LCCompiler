@@ -25,7 +25,9 @@ executable lambdac
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules: Tree, Parser, Binding, GenRep, PrintCode, RegAlloc, CodeGen, Tests
+    other-modules: 
+        Tree, Parser, Binding, GenRep, PrintCode, RegAlloc, CodeGen, Tests,
+        RegAlloc.InstructionTransactions
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

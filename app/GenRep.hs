@@ -35,15 +35,15 @@ data ARM64 reg
     | PseudoZero String -- .text
     deriving Functor
 
-data GenerationContext reg
+data GenerationContext code
     = GenerationContext {
-        pushedCode :: [[ARM64 reg]],
-        code :: [[ARM64 reg]],
-        constData :: [ARM64 reg],
+        pushedCode :: [[code]],
+        code :: [[code]],
+        constData :: [code],
         labelId :: Int,
         registerId :: Int
     }
-type Generator reg = State (GenerationContext reg)
+type Generator code = State (GenerationContext code)
 
 -- Push and pop code:
 --  saves the current positon in generation to generate a new section, which is placed at the top when code is popped again
@@ -59,12 +59,12 @@ popCode
                 [] -> ctx
                 x : xs -> ctx {code = x : code ctx, pushedCode = xs}
 
-emitCode :: ARM64 a -> Generator a ()
+emitCode :: code -> Generator code ()
 emitCode line = modify $
     \ ctx -> case code ctx of
         first : rest -> ctx { code = (line : first) : rest}
 
-emitData :: ARM64 a -> Generator a ()
+emitData :: code -> Generator code ()
 emitData line = modify $ \ ctx -> ctx { constData = line : constData ctx}
 
 getLabel :: String -> Generator a String
@@ -82,7 +82,7 @@ data VirtualRegister
     | Virt Int
     | Virt32 Int
 
-getVReg :: Generator VirtualRegister VirtualRegister
+getVReg :: Generator a VirtualRegister
 getVReg = do
     intLabel <- gets registerId
     modify $ \ctx -> ctx { registerId = intLabel + 1}
@@ -132,7 +132,7 @@ closure
         (("context", -1), 8)
     ]
 
-callClosure :: VirtualRegister -> Generator VirtualRegister VirtualRegister
+callClosure :: VirtualRegister -> Generator (ARM64 VirtualRegister) VirtualRegister
 callClosure cl = do
     emitCode $ Comment "load closure context"
     emitCode $ InstFlex "ldr" [Out abiCtx] $ DerefExpr cl $ offsetOf closure ("context", -1)
@@ -147,7 +147,7 @@ callClosure cl = do
     emitCode $ InstRegs "mov" [Out resultReg, In abiRet]
     return resultReg
 
-runGenerator :: Generator a b -> [ARM64 a]
+runGenerator :: Generator (ARM64 a) b -> [ARM64 a]
 runGenerator gen =
     [PseudoZero "", PseudoZero ".text"]
     ++ reverse (concat $ code finalState)
@@ -168,7 +168,7 @@ initialState = GenerationContext {
 
 -- generator transformations
 
-mapGenerator ::([ARM64 reg] -> [ARM64 reg2]) ->  Generator reg a ->  Generator reg2 a
+mapGenerator ::([code1] -> [code2]) ->  Generator code1 a ->  Generator code2 a
 mapGenerator trans generator = value <$ put finalState
     where
         (   value,
@@ -190,7 +190,7 @@ mapGenerator trans generator = value <$ put finalState
         }
 
 -- kind of a monad in its first type arg
-bindGenerator :: ([ARM64 reg] -> Generator reg2 ()) -> Generator reg a -> Generator reg2 ()
+bindGenerator :: ([code1] -> Generator code2 ()) -> Generator code1 a -> Generator code2 ()
 bindGenerator trans gen = boundGenerator
     where 
         (   _,
