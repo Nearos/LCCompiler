@@ -7,12 +7,14 @@ import qualified Data.ByteString as BS
 import Binding (resolveBindings, bindProgram)
 import CodeGen (genProgram)
 import PrintCode (Printable(printCode), printGenerated)
-import GenRep (runGenerator, bindGenerator, emitCode)
+import GenRep (runGenerator, bindGeneratorCode, emitCode, mapGenerator)
 import System.Environment (getArgs)
-import RegAlloc (regAllocNaive)
+import RegAlloc (regAllocNaive, regAlloc)
 import System.Exit (exitFailure)
 import Control.Monad (forM_, when)
 import Tree (printAST, Toplevel(Binding), printProgram)
+import RegAlloc.LiveRegister (findLiveRegs)
+import Data.Bifunctor (Bifunctor(second))
 
 data Settings = Settings {
     sourceFile :: String,
@@ -64,10 +66,11 @@ main = do
             case dumpBound settings of 
                 Nothing -> return ()
                 Just file -> writeFile file $ printProgram bound
-            let virtGenerated = runGenerator $ bindGenerator (mapM_ emitCode) $ genProgram bound 
+            let virtGenerator = genProgram bound 
+            let virtGenerated = runGenerator virtGenerator
             case dumpVirtualRegister settings of 
                 Nothing -> return ()
                 Just file -> writeFile file $ printGenerated virtGenerated
-            let allocatedRegisters = runGenerator $ regAllocNaive [] virtGenerated
+            let allocatedRegisters = runGenerator $ bindGeneratorCode (fmap undefined . snd) regAlloc $ mapGenerator findLiveRegs virtGenerator
             saveResult settings $ printGenerated allocatedRegisters
 

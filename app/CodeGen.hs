@@ -59,12 +59,15 @@ genExpr callerContext (Lambda meta (Bound name id) body) = do
 
 
         functionStart = do 
-            emitCode $ InstFlex "str" [In (X 29)] $ DerefPre sp (-8)
-            emitCode $ InstFlex "str" [In (X 30)] $ DerefPre sp (-8)
+            -- saving stack pointer now handled by RegAlloc
+            -- emitCode $ InstFlex "str" [In (X 29)] $ DerefPre sp (-8)
+            -- emitCode $ InstFlex "str" [In (X 30)] $ DerefPre sp (-8)
+            return ()
 
         functionEnd = do 
-            emitCode $ InstFlex "ldr" [Out (X 30)] $ DerefPost sp 8
-            emitCode $ InstFlex "ldr" [Out (X 29)] $ DerefPost sp 8
+            -- saving stack pointer now handled by RegAlloc
+            -- emitCode $ InstFlex "ldr" [Out (X 30)] $ DerefPost sp 8
+            -- emitCode $ InstFlex "ldr" [Out (X 29)] $ DerefPost sp 8
             emitCode $ InstHiddenReg "ret" [In (X 29), In (X 30), In abiRet] []
             
         loadEnvironment :: Struct -> Generator (ARM64 VirtualRegister) Environment 

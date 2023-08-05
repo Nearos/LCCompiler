@@ -15,7 +15,7 @@ data FlexibleArg reg
     | ImmInt Int -- 5
     | ImmLabel String -- printf
     | ImmString String -- "Hello!"
-    | ImmChar Char -- 'c'\
+    | ImmChar Char -- 'c'
     deriving Functor
 
 data RegArg reg
@@ -81,6 +81,12 @@ data VirtualRegister
     | SP
     | Virt Int
     | Virt32 Int
+    deriving (Eq, Ord)
+
+isVirtual :: VirtualRegister -> Bool
+isVirtual (Virt _) = True 
+isVirtual (Virt32 _) = True 
+isVirtual _ = False
 
 getVReg :: Generator a VirtualRegister
 getVReg = do
@@ -190,14 +196,14 @@ mapGenerator trans generator = value <$ put finalState
         }
 
 -- kind of a monad in its first type arg
-bindGenerator :: ([code1] -> Generator code2 ()) -> Generator code1 a -> Generator code2 ()
-bindGenerator trans gen = boundGenerator
+bindGeneratorCode :: (code1 -> code2) -> ([code1] -> Generator code2 ()) -> Generator code1 a -> Generator code2 ()
+bindGeneratorCode dataMap trans gen = boundGenerator
     where 
         (   _,
             GenerationContext {
                 pushedCode,
                 code = oldCode,
-                constData,
+                constData = oldConstData,
                 labelId,
                 registerId
             }
@@ -222,7 +228,9 @@ bindGenerator trans gen = boundGenerator
             popCode
 
         boundGenerator = do 
-            trans $ reverse constData
-            newData <- gets $ head . code 
-            modify $ \ ctx -> ctx {code = [[]], constData = newData}
+            -- trans $ reverse constData
+            -- newData <- gets $ head . code 
+            modify $ \ ctx -> ctx {
+                code = [[]], 
+                constData = map dataMap oldConstData}
             bindCode oldCode 
