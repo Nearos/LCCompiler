@@ -7,6 +7,9 @@ import Text.Parsec
 import Text.Parsec.ByteString
 
 
+import Typing.Typ
+import qualified Typing.Parser as TyParser
+
 data Parsed
 
 type instance Sym Parsed = String
@@ -16,7 +19,7 @@ type instance VarMeta Parsed = SourcePos
 type instance LambdaMeta Parsed = SourcePos
 type instance LitMeta Parsed = SourcePos
 type instance ExternMeta Parsed = SourcePos
-type instance BindMeta Parsed = SourcePos
+type instance BindMeta Parsed = (SourcePos, Maybe (Typ TyParser.Parsed))
 type instance ConsMeta Parsed = SourcePos
 type instance CaseMeta Parsed = SourcePos
 
@@ -24,6 +27,9 @@ instance ShowablePass [Char] where
     passShow = id 
 
 instance ShowablePass SourcePos where 
+    passShow = show
+
+instance ShowablePass (SourcePos, Maybe (Typ TyParser.Parsed)) where 
     passShow = show
 
 parseSym :: Parser String 
@@ -135,7 +141,7 @@ parseBinding = do
     value <- parseExpr
     spaces 
     string ";"
-    return $ Binding location name value
+    return $ Binding (location, Nothing) name value
 
 parseConstDef :: Parser (Toplevel Parsed)
 parseConstDef = do 
@@ -144,8 +150,11 @@ parseConstDef = do
     spaces 
     string ":"
     spaces 
-    arity <- read <$> many digit 
-    return $ ConstDef location name arity
+    --arity <- read <$> many digit 
+    typeSig <- TyParser.parseType
+    spaces 
+    string ";"
+    return $ ConstDef (location, Just typeSig) name $ arity "->" typeSig
 
 
 parseToplevel :: Parser (Toplevel Parsed)

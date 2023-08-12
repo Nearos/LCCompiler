@@ -7,7 +7,7 @@ import qualified Data.ByteString as BS
 import Binding (resolveBindings, bindProgram)
 import CodeGen (genProgram)
 import PrintCode (Printable(printCode), printGenerated)
-import GenRep (runGenerator, bindGeneratorCode, emitCode, mapGenerator)
+import GenRep (runGenerator, bindGeneratorCode, emitCode, mapGenerator, abiArg)
 import System.Environment (getArgs)
 import RegAlloc (regAllocNaive, regAlloc)
 import System.Exit (exitFailure)
@@ -21,11 +21,11 @@ data Settings = Settings {
     outputFile :: String,
     dumpVirtualRegister :: Maybe String,
     dumpBound :: Maybe String
-    }   
+    }
     deriving Show
 
 getSource :: Settings -> IO BS.ByteString
-getSource settings 
+getSource settings
     | sourceFile settings == "" = BS.getLine
     | otherwise = BS.readFile $ sourceFile settings
 
@@ -36,41 +36,41 @@ saveResult settings
 
 readSettings :: IO Settings
 readSettings = getSettings <$> getArgs
-    where 
+    where
         getSettings [] = Settings "" "" Nothing Nothing
         getSettings ("--dVR":file:rest) = (getSettings rest) {dumpVirtualRegister = Just file}
         getSettings ("--dBound":file:rest) = (getSettings rest) {dumpBound = Just file}
         getSettings ("-o":file:rest) = (getSettings rest) {outputFile = file}
-        getSettings (file:rest) = 
-            case getSettings rest of 
+        getSettings (file:rest) =
+            case getSettings rest of
                 Settings _ "" d1 d2 -> Settings file (outputize file) d1 d2
                 Settings _ opt d1 d2 -> Settings file opt d1 d2
 
-        outputize file = 
+        outputize file =
             let cName = reverse $ dropWhile (/= '.') $ reverse file
             in cName ++ ".arm64.s"
 
 
 
 main :: IO ()
-main = do 
+main = do
     settings <- readSettings
     exprSrc <- getSource settings
     -- TODO : whole program
-    case parse parseProgram (sourceFile settings) exprSrc of 
-        Left perr -> do 
+    case parse parseProgram (sourceFile settings) exprSrc of
+        Left perr -> do
             print perr
             exitFailure
-        Right ast -> do 
-            let bound = bindProgram ast 
-            case dumpBound settings of 
+        Right ast -> do
+            putStrLn $ printProgram ast
+            let bound = bindProgram ast
+            case dumpBound settings of
                 Nothing -> return ()
                 Just file -> writeFile file $ printProgram bound
-            let virtGenerator = genProgram bound 
+            let virtGenerator = genProgram bound
             let virtGenerated = runGenerator virtGenerator
-            case dumpVirtualRegister settings of 
+            case dumpVirtualRegister settings of
                 Nothing -> return ()
                 Just file -> writeFile file $ printGenerated virtGenerated
             let allocatedRegisters = runGenerator $ bindGeneratorCode (fmap undefined . snd) regAlloc $ mapGenerator findLiveRegs virtGenerator
             saveResult settings $ printGenerated allocatedRegisters
-

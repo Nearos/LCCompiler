@@ -27,6 +27,7 @@ import Control.Monad.Trans.Class ( MonadTrans(lift) )
 -- [x5 .. x28] are available 
 availableRegisters = map HardX [5 .. 28]
 
+-- v1 -> [v2, v3, v4, v5, ... ]
 type LiveRegisterGraph var = M.Map var (S.Set var)
 
 data HardRegister
@@ -38,9 +39,7 @@ instance Printable HardRegister where
     printCode (HardX n) = "x" ++ show n
     printCode HardSP = "sp"
 
-
 type StackOffset = Int
--- v1 -> [v2, v3, v4, v5, ... ] 
 
 regAlloc :: [LiveAnnotated VirtualRegister] -> Generator (ARM64 HardRegister) ()
 regAlloc ((_, lbl@(DefLabel _)) : inInst) = do

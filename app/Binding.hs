@@ -82,7 +82,7 @@ resolveProgram :: [Binding] -> [Toplevel Parsed] -> Resolver [Toplevel Resolved]
 
 resolveProgram _ [] = return []
 
-resolveProgram bindings (Binding meta name value:defs) = do
+resolveProgram bindings (Binding (meta, _) name value:defs) = do
     newId <- if name == "main" then return $ -1 else getId
     let newBindings = (name, newId) : bindings
     boundValue <- resolve newBindings value -- generate body with new bindings to allow recursion
@@ -93,7 +93,7 @@ resolveProgram bindings (Binding meta name value:defs) = do
     let info = BindInfo meta newId
     return $ Binding info (Bound name newId) recValue : restResolved
 
-resolveProgram bindings (ConstDef meta name arity : rest) = do
+resolveProgram bindings (ConstDef (meta, _) name arity : rest) = do
     newId <- getId
     let newBindings = (name, newId) : bindings
     let info = BindInfo meta newId

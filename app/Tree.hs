@@ -59,7 +59,7 @@ printAST (Case m scrut branches) = "case " ++ printAST scrut ++ ": " ++ concatMa
         printPattern (Pattern const binds) = unwords $ map passShow $ const : binds
 
 printToplevel (Binding meta sym expr) = passShow sym ++ " = " ++ printAST expr ++ ";"
-printToplevel (ConstDef meat sym arity) = passShow sym ++ " : " ++ show arity ++ ";"
+printToplevel (ConstDef meat sym arity) = passShow sym ++ " : " ++ passShow meat ++ ";"
 
 printProgram :: 
     ( ShowablePass (BindMeta a)
