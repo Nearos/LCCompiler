@@ -28,7 +28,7 @@ executable lambdac
     other-modules: 
         Tree, Parser, Binding, GenRep, PrintCode, CodeGen, Tests,
         RegAlloc, RegAlloc.InstructionTransactions, RegAlloc.LiveRegister, RegAlloc.Naive,
-        Typing.Typ, Typing.Parser
+        Typing.Typ, Typing.Parser, Typing.Constraint, Typing.Environment, Typing.ConstraintGen, Typing.ConstraintSolve, Typing.Pass
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

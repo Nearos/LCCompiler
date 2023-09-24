@@ -48,11 +48,12 @@ printAST ::
     , ShowablePass (CaseMeta a))
     => Expr a -> String  
 printAST (Lambda m s b) = "([" ++ passShow m ++ "]\\" ++ passShow s ++ "." ++ printAST b ++ ")"
-printAST (App m a b) = "(" ++ printAST a ++ " " ++ printAST b ++ ")"
-printAST (Var m s) = passShow s 
-printAST (Construct m c subs) = passShow c ++ "{" ++ intercalate ", " (map printAST subs) ++ "}"
-printAST (SrcStringLit m val) = "\"" ++ val ++ "\"" 
-printAST (Case m scrut branches) = "case " ++ printAST scrut ++ ": " ++ concatMap printBranch branches
+printAST (App m a b) = "([" ++ passShow m ++ "]" ++ printAST a ++ " " ++ printAST b ++ ")"
+printAST (Var m s) = "[" ++ passShow m ++ "]" ++ passShow s 
+printAST (Construct m c subs) = "[" ++ passShow m ++ "]" ++ passShow c ++ "{" ++ intercalate ", " (map printAST subs) ++ "}"
+printAST (SrcStringLit m val) = "[" ++ passShow m ++ "]" ++ "\"" ++ val ++ "\"" 
+printAST (SrcIntLit m val) =  "[" ++ passShow m ++ "] " ++ show val
+printAST (Case m scrut branches) = "[" ++ passShow m ++ "]" ++ "case " ++ printAST scrut ++ ": " ++ concatMap printBranch branches
     where 
         printBranch (CaseBranch pat expr) = printPattern pat ++ " -> " ++ printAST expr ++ "; "
 

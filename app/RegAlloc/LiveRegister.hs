@@ -16,7 +16,7 @@ findLiveRegs = go S.empty M.empty
         go liveAfter labels (inst : rest) =
             let 
                 liveAfterCFG = case instructionJump inst of 
-                    Jump label -> S.union liveAfter $ fromJust $ M.lookup label labels 
+                    Jump label -> fromJust $ M.lookup label labels 
                     CondJump label -> S.union liveAfter $ fromJust $ M.lookup label labels 
                     _ -> liveAfter
                 RegisterTransaction consumes produces = instructionTransaction inst 

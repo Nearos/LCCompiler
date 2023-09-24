@@ -33,11 +33,13 @@ type LiveRegisterGraph var = M.Map var (S.Set var)
 data HardRegister
     = HardX Int
     | HardSP
+    | HardXZ
     deriving (Eq, Ord)
 
 instance Printable HardRegister where
     printCode (HardX n) = "x" ++ show n
     printCode HardSP = "sp"
+    printCode HardXZ = "xzr"
 
 type StackOffset = Int
 
@@ -145,7 +147,7 @@ regAssignInstruction _ spilledAssignment virtualRegisterAssignment (live, instru
                 case M.lookup reg virtualRegisterAssignment of
                     Just hard -> modify ((reg, hard):)
                     Nothing -> case M.lookup reg spilledAssignment of
-                        Nothing -> undefined
+                        Nothing -> modify ((reg, HardXZ):)
                         Just offset -> do
                             cAss <- get
                             let remainingSpillRegisters = filter (flip notElem $ map snd cAss) $ map HardX [2 .. 4]

@@ -54,4 +54,5 @@ instructionJump :: ARM64 reg -> InstructionControl
 instructionJump (InstHiddenReg "blr" _ _) = Funcall
 instructionJump (InstHiddenFlex "bl" _ _ _) = Funcall
 instructionJump (InstFlex "beq" _ (ImmLabel label)) = CondJump label
+instructionJump (InstFlex "b" _ (ImmLabel label)) = Jump label
 instructionJump _ = Inline

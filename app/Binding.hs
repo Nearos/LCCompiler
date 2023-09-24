@@ -2,7 +2,7 @@
 module Binding where
 
 import qualified Data.Set as S
-import Control.Monad.Trans.State ( evalState, get, put, State )
+import Control.Monad.Trans.State ( evalState, get, put, State, StateT (runStateT), evalStateT, modify )
 import Text.Parsec (SourcePos)
 
 
@@ -13,11 +13,16 @@ import Data.Bifunctor (Bifunctor(bimap))
 import Control.Monad (forM)
 import Data.Maybe
 
+
+import Typing.Typ(Typ (TyCon, TyVar, TyApp, TyForall), TySym)
+import qualified Typing.Parser as TyParser
+import Control.Monad.Trans.Class
 -- 
 
 data ResolvedSymbol
     = Free String
     | Bound String Int
+    deriving (Eq, Ord)
 
 type Binding = (String, Int)
 
@@ -52,7 +57,8 @@ data ResolvedLambda
 
 data BindInfo = BindInfo {
     pos :: SourcePos,
-    id :: Int
+    id :: Int,
+    boundTyp :: Maybe (Typ Resolved)
 }
 
 type instance LambdaMeta Resolved = ResolvedLambda
@@ -64,6 +70,7 @@ type instance BindMeta Resolved = BindInfo
 type instance ConsMeta Resolved = SourcePos
 type instance Const Resolved = ResolvedSymbol
 type instance CaseMeta Resolved = SourcePos
+type instance TySym Resolved = ResolvedSymbol
 
 instance ShowablePass ResolvedSymbol where
     passShow (Free str) = "'" ++ str ++ "'"
@@ -74,15 +81,39 @@ instance ShowablePass ResolvedLambda where
 
 
 instance ShowablePass BindInfo where
-    passShow (BindInfo pos id) = "@" ++ show pos ++ " #" ++ show id
+    passShow (BindInfo pos id typ) = "@" ++ show pos ++ " #" ++ show id
 
 -- function
+
+resolveType :: Typ TyParser.Parsed -> Resolver (Typ Resolved)
+resolveType typ = do 
+    (resolved, bindings) <- runStateT (go typ) [] 
+    let withForalls = foldl (\typ (name, id) -> TyForall (Bound name id) typ) resolved bindings
+    pure withForalls
+    where
+        
+        go :: Typ TyParser.Parsed -> StateT [Binding] Resolver (Typ Resolved)
+        go (TyCon a) = return $ TyCon $ Free a
+        go (TyVar a) = do 
+            currentBindings <- get 
+            case lookup a currentBindings of 
+                Just val -> pure $ TyVar $ Bound a val 
+                Nothing -> do 
+                    newId <- lift getId
+                    modify ((a, newId) : )
+                    pure $ TyVar $ Bound a newId
+        
+        go (TyApp a b) = do 
+            aB <- go a 
+            bB <- go b
+            pure $ TyApp aB bB
+
 
 resolveProgram :: [Binding] -> [Toplevel Parsed] -> Resolver [Toplevel Resolved]
 
 resolveProgram _ [] = return []
 
-resolveProgram bindings (Binding (meta, _) name value:defs) = do
+resolveProgram bindings (Binding (meta, typDecl) name value:defs) = do
     newId <- if name == "main" then return $ -1 else getId
     let newBindings = (name, newId) : bindings
     boundValue <- resolve newBindings value -- generate body with new bindings to allow recursion
@@ -90,13 +121,15 @@ resolveProgram bindings (Binding (meta, _) name value:defs) = do
             Lambda (ResolvedLambda a b _) c d -> Lambda (ResolvedLambda a b $ Just (name, newId)) c d
             a -> a
     restResolved <- resolveProgram newBindings defs
-    let info = BindInfo meta newId
+    boundTyp <- traverse resolveType typDecl
+    let info = BindInfo meta newId boundTyp
     return $ Binding info (Bound name newId) recValue : restResolved
 
-resolveProgram bindings (ConstDef (meta, _) name arity : rest) = do
+resolveProgram bindings (ConstDef (meta, typDecl) name arity : rest) = do
     newId <- getId
     let newBindings = (name, newId) : bindings
-    let info = BindInfo meta newId
+    boundTyp <- traverse resolveType typDecl
+    let info = BindInfo meta newId boundTyp
     ctor <- constructor info newId
     restResolved <- resolveProgram newBindings rest
     return $
